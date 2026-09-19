@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 背景圆角矩形 -->
+    <path
+        android:fillColor="#1E88E5"
+        android:pathData="M18,12h72c3.31,0 6,2.69 6,6v72c0,3.31 -2.69,6 -6,6H18c-3.31,0 -6,-2.69 -6,-6V18c0,-3.31 2.69,-6 6,-6z" />
+    <!-- 文本纸张轮廓 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,24h32l16,16v44c0,2.21 -1.79,4 -4,4H32c-2.21,0 -4,-1.79 -4,-4V28c0,-2.21 1.79,-4 4,-4z" />
+    <!-- 折角 -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M64,24v16h16z" />
+    <!-- 文本横线 -->
+    <path
+        android:fillColor="#1E88E5"
+        android:pathData="M36,46h36v3H36zM36,54h36v3H36zM36,62h26v3H36zM36,70h36v3H36z" />
+    <!-- 装饰书签/阅读标记 -->
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M40,24h8v16l-4,-3 -4,3z" />
+</vector>

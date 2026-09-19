@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">文本阅读器</string>
+    <string name="open_file">打开本地文本</string>
+    <string name="no_file_opened">暂未打开任何文档</string>
+    <string name="recent_files">最近阅读</string>
+    <string name="clear_recents">清空历史</string>
+    <string name="encoding_auto">自动检测</string>
+    <string name="toggle_line_numbers">切换行号</string>
+    <string name="toggle_wrap">自动换行</string>
+    <string name="font_size">字体大小</string>
+    <string name="jump_to_line">跳转行号</string>
+    <string name="loading">正在加载文本...</string>
+    <string name="error_reading_file">读取文件失败，请检查文件权限或格式</string>
+</resources>
