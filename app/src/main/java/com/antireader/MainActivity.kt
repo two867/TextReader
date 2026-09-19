@@ -71,7 +71,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onRecentFileClick = { recent ->
                                     val uri = Uri.parse(recent.uriString)
-                                    viewModel.openUri(context, uri)
+                                    viewModel.openUri(context, uri, isFromRecent = true)
+                                },
+                                onDeleteRecentClick = { recent ->
+                                    viewModel.removeRecentFile(context, recent.uriString)
                                 },
                                 onClearRecentsClick = {
                                     viewModel.clearRecents(context)

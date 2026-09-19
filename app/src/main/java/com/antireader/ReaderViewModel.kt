@@ -36,7 +36,12 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    fun openUri(context: Context, uri: Uri, forcedCharset: String? = null) {
+    fun openUri(
+        context: Context,
+        uri: Uri,
+        isFromRecent: Boolean = false,
+        forcedCharset: String? = null
+    ) {
         viewModelScope.launch {
             val (name, size) = FileUtils.getFileNameAndSize(context, uri)
             _uiState.value = ReaderUiState.Loading(fileName = name)
@@ -44,12 +49,19 @@ class ReaderViewModel : ViewModel() {
             try {
                 val (lines, detectedCharset) = withContext(Dispatchers.IO) {
                     val charset = forcedCharset ?: run {
-                        context.contentResolver.openInputStream(uri)?.use { stream ->
-                            EncodingDetector.detectEncoding(stream)
-                        } ?: "UTF-8"
+                        val stream = context.contentResolver.openInputStream(uri)
+                            ?: throw java.io.FileNotFoundException("无法打开输入流")
+                        stream.use {
+                            EncodingDetector.detectEncoding(it)
+                        }
                     }
 
                     val loadedLines = FileUtils.readLines(context, uri, charset)
+                    if (loadedLines.isEmpty()) {
+                        // 确认是否能正常打开
+                        context.contentResolver.openInputStream(uri)?.close()
+                            ?: throw java.io.FileNotFoundException("文件为空或不存在")
+                    }
                     Pair(loadedLines, charset)
                 }
 
@@ -79,10 +91,31 @@ class ReaderViewModel : ViewModel() {
                     )
                 }
             } catch (e: Exception) {
-                _uiState.value = ReaderUiState.Error(
-                    message = "打开文件失败：${e.localizedMessage ?: "未知错误"}"
-                )
+                if (isFromRecent) {
+                    // 如果是从历史记录点击打开失败（文件被移动或删除），通过 Toast 提示，不弹窗打扰
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            context.applicationContext,
+                            "文档不存在或已被移动",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    val recents = FileUtils.getRecentFiles(context)
+                    _uiState.value = ReaderUiState.Home(recentFiles = recents)
+                } else {
+                    _uiState.value = ReaderUiState.Error(
+                        message = "打开文件失败：${e.localizedMessage ?: "未知错误"}"
+                    )
+                }
             }
+        }
+    }
+
+    fun removeRecentFile(context: Context, uriString: String) {
+        FileUtils.removeRecentFile(context, uriString)
+        val recents = FileUtils.getRecentFiles(context)
+        if (_uiState.value is ReaderUiState.Home) {
+            _uiState.value = ReaderUiState.Home(recentFiles = recents)
         }
     }
 

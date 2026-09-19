@@ -132,6 +132,27 @@ object FileUtils {
         }
     }
 
+    fun removeRecentFile(context: Context, uriString: String) {
+        val list = getRecentFiles(context).toMutableList()
+        list.removeAll { it.uriString == uriString }
+
+        val jsonArray = JSONArray()
+        for (item in list) {
+            val obj = JSONObject().apply {
+                put("uriString", item.uriString)
+                put("displayName", item.displayName)
+                put("fileSize", item.fileSize)
+                put("lastOpenedTimestamp", item.lastOpenedTimestamp)
+            }
+            jsonArray.put(obj)
+        }
+
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_RECENTS, jsonArray.toString())
+            .apply()
+    }
+
     fun clearRecentFiles(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
