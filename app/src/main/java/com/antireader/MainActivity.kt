@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.unit.dp
 import com.antireader.model.ReaderUiState
 import com.antireader.ui.HomeScreen
@@ -37,6 +38,11 @@ class MainActivity : ComponentActivity() {
             TextReaderTheme {
                 val context = LocalContext.current
                 val uiState by viewModel.uiState.collectAsState()
+
+                // 拦截手机系统返回手势/物理返回键：如果在阅读页面，返回到首页并刷新
+                BackHandler(enabled = uiState is ReaderUiState.Reading) {
+                    viewModel.closeDocument(context)
+                }
 
                 // 文件选择器（从 HomeScreen 点击打开本地文件时唤起）
                 val filePickerLauncher = rememberLauncherForActivityResult(
@@ -143,6 +149,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.loadRecentFiles(this)
     }
 
     override fun onNewIntent(intent: Intent) {

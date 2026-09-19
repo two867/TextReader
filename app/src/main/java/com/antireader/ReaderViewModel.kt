@@ -73,23 +73,21 @@ class ReaderViewModel : ViewModel() {
                     charsetName = detectedCharset
                 )
 
+                // 立即同步记录到最近打开列表，确保立即返回也能立即刷新
+                FileUtils.saveRecentFile(
+                    context,
+                    RecentFile(
+                        uriString = uri.toString(),
+                        displayName = name,
+                        fileSize = size,
+                        lastOpenedTimestamp = System.currentTimeMillis()
+                    )
+                )
+
                 _uiState.value = ReaderUiState.Reading(
                     document = doc,
                     settings = currentSettings
                 )
-
-                // 记录到最近打开列表
-                withContext(Dispatchers.IO) {
-                    FileUtils.saveRecentFile(
-                        context,
-                        RecentFile(
-                            uriString = uri.toString(),
-                            displayName = name,
-                            fileSize = size,
-                            lastOpenedTimestamp = System.currentTimeMillis()
-                        )
-                    )
-                }
             } catch (e: Exception) {
                 if (isFromRecent) {
                     // 如果是从历史记录点击打开失败（文件被移动或删除），通过 Toast 提示，不弹窗打扰
