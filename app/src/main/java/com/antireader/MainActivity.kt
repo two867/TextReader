@@ -109,8 +109,12 @@ class MainActivity : ComponentActivity() {
                             ReaderScreen(
                                 document = state.document,
                                 settings = state.settings,
-                                onBackClick = {
-                                    viewModel.closeDocument(context)
+                                initialScrollLine = state.currentScrollLine,
+                                onBackClick = { lastLineIndex ->
+                                    viewModel.closeDocument(context, lastLineIndex)
+                                },
+                                onProgressChanged = { lineIndex, totalLines ->
+                                    viewModel.saveReadingProgress(context, lineIndex, totalLines)
                                 },
                                 onToggleLineNumbers = {
                                     viewModel.toggleLineNumbers()

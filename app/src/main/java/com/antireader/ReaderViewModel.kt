@@ -86,18 +86,20 @@ class ReaderViewModel : ViewModel() {
                     charsetName = detectedCharset
                 )
 
-                // 刷新时间戳
+                // 刷新时间戳与总行数，保留已有进度
                 FileUtils.saveRecentFile(
                     context,
                     recent.copy(
                         fileSize = resolvedSize,
-                        lastOpenedTimestamp = System.currentTimeMillis()
+                        lastOpenedTimestamp = System.currentTimeMillis(),
+                        totalLines = lines.size
                     )
                 )
 
                 _uiState.value = ReaderUiState.Reading(
                     document = doc,
-                    settings = currentSettings
+                    settings = currentSettings,
+                    currentScrollLine = recent.lastReadIndex
                 )
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -162,6 +164,13 @@ class ReaderViewModel : ViewModel() {
                     charsetName = detectedCharset
                 )
 
+                // 检查是否曾阅读过该文档，尝试恢复历史阅读进度
+                val existingRecent = FileUtils.getRecentFiles(context).find {
+                    it.uriString == uri.toString() ||
+                            (it.localCachePath != null && it.localCachePath == cachedFile?.absolutePath)
+                }
+                val restoredIndex = existingRecent?.lastReadIndex ?: 0
+
                 // 立即持久化记录到最近阅读列表，附带本地安全备份路径
                 FileUtils.saveRecentFile(
                     context,
@@ -170,13 +179,16 @@ class ReaderViewModel : ViewModel() {
                         localCachePath = cachedFile?.absolutePath,
                         displayName = name,
                         fileSize = finalSize,
-                        lastOpenedTimestamp = System.currentTimeMillis()
+                        lastOpenedTimestamp = System.currentTimeMillis(),
+                        lastReadIndex = restoredIndex,
+                        totalLines = lines.size
                     )
                 )
 
                 _uiState.value = ReaderUiState.Reading(
                     document = doc,
-                    settings = currentSettings
+                    settings = currentSettings,
+                    currentScrollLine = restoredIndex
                 )
             } catch (e: Exception) {
                 _uiState.value = ReaderUiState.Error(
@@ -252,7 +264,31 @@ class ReaderViewModel : ViewModel() {
         }
     }
 
-    fun closeDocument(context: Context) {
+    fun saveReadingProgress(context: Context, lineIndex: Int, totalLines: Int) {
+        val state = _uiState.value
+        if (state is ReaderUiState.Reading) {
+            val uriStr = state.document.uri?.toString()
+            if (uriStr != null) {
+                FileUtils.updateReadingProgress(
+                    context = context,
+                    uriString = uriStr,
+                    lineIndex = lineIndex,
+                    totalLines = totalLines
+                )
+            }
+        }
+    }
+
+    fun closeDocument(context: Context, lastLineIndex: Int? = null) {
+        val state = _uiState.value
+        if (state is ReaderUiState.Reading && state.document.uri != null && lastLineIndex != null) {
+            FileUtils.updateReadingProgress(
+                context = context,
+                uriString = state.document.uri.toString(),
+                lineIndex = lastLineIndex,
+                totalLines = state.document.totalLines
+            )
+        }
         val recents = FileUtils.getRecentFiles(context)
         _uiState.value = ReaderUiState.Home(recentFiles = recents)
     }

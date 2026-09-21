@@ -206,6 +206,8 @@ object FileUtils {
                 put("displayName", item.displayName)
                 put("fileSize", item.fileSize)
                 put("lastOpenedTimestamp", item.lastOpenedTimestamp)
+                put("lastReadIndex", item.lastReadIndex)
+                put("totalLines", item.totalLines)
             }
             jsonArray.put(obj)
         }
@@ -232,7 +234,9 @@ object FileUtils {
                         localCachePath = localPath,
                         displayName = obj.getString("displayName"),
                         fileSize = obj.optLong("fileSize", 0L),
-                        lastOpenedTimestamp = obj.optLong("lastOpenedTimestamp", 0L)
+                        lastOpenedTimestamp = obj.optLong("lastOpenedTimestamp", 0L),
+                        lastReadIndex = obj.optInt("lastReadIndex", 0),
+                        totalLines = obj.optInt("totalLines", 0)
                     )
                 )
             }
@@ -240,6 +244,78 @@ object FileUtils {
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * 更新指定文档的阅读进度
+     */
+    fun updateReadingProgress(
+        context: Context,
+        uriString: String,
+        lineIndex: Int,
+        totalLines: Int
+    ) {
+        val list = getRecentFiles(context).toMutableList()
+        val index = list.indexOfFirst { it.uriString == uriString }
+        if (index != -1) {
+            val current = list[index]
+            list[index] = current.copy(
+                lastReadIndex = lineIndex,
+                totalLines = totalLines,
+                lastOpenedTimestamp = System.currentTimeMillis()
+            )
+            val jsonArray = JSONArray()
+            for (item in list) {
+                val obj = JSONObject().apply {
+                    put("uriString", item.uriString)
+                    put("localCachePath", item.localCachePath ?: "")
+                    put("displayName", item.displayName)
+                    put("fileSize", item.fileSize)
+                    put("lastOpenedTimestamp", item.lastOpenedTimestamp)
+                    put("lastReadIndex", item.lastReadIndex)
+                    put("totalLines", item.totalLines)
+                }
+                jsonArray.put(obj)
+            }
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_RECENTS, jsonArray.toString())
+                .apply()
+        }
+    }
+
+    /**
+     * 将 Android 各种 URI (content://, file://) 转换为直观、用户友好的手机文件存储路径
+     */
+    fun formatReadablePath(uriString: String, localCachePath: String?): String {
+        try {
+            val uri = Uri.parse(uriString)
+            if (uri.scheme == "file") {
+                return uri.path ?: uriString
+            }
+            if (uri.scheme == "content") {
+                val decodedUri = java.net.URLDecoder.decode(uriString, "UTF-8")
+                // 常见系统 SAF 路径：如 document/primary:Download/book.txt
+                if (decodedUri.contains("primary:")) {
+                    val subPath = decodedUri.substringAfter("primary:")
+                    return "/storage/emulated/0/$subPath"
+                }
+                // 第三方文件管理器常见格式：如 /external_files/Download/book.txt
+                if (decodedUri.contains("/external_files/")) {
+                    val subPath = decodedUri.substringAfter("/external_files/")
+                    return "/storage/emulated/0/$subPath"
+                }
+                if (decodedUri.contains("/root/storage/emulated/0/")) {
+                    return "/storage/emulated/0/" + decodedUri.substringAfter("/root/storage/emulated/0/")
+                }
+                val path = uri.path
+                if (!path.isNullOrEmpty() && path.startsWith("/storage/")) {
+                    return path
+                }
+                return decodedUri
+            }
+        } catch (_: Exception) {}
+        return uriString
     }
 
     fun removeRecentFile(context: Context, uriString: String) {

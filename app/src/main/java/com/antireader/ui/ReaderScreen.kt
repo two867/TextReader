@@ -33,6 +33,7 @@ import com.antireader.ui.components.FontSizeDialog
 import com.antireader.ui.components.JumpLineDialog
 import com.antireader.ui.theme.*
 import com.antireader.utils.FileUtils
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,7 +41,9 @@ import kotlinx.coroutines.launch
 fun ReaderScreen(
     document: TextDocument,
     settings: ReaderSettings,
-    onBackClick: () -> Unit,
+    initialScrollLine: Int = 0,
+    onBackClick: (lastLineIndex: Int) -> Unit,
+    onProgressChanged: (lineIndex: Int, totalLines: Int) -> Unit,
     onToggleLineNumbers: () -> Unit,
     onToggleWrap: () -> Unit,
     onFontSizeChanged: (Float) -> Unit,
@@ -48,8 +51,26 @@ fun ReaderScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val verticalListState = rememberLazyListState()
+    val verticalListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialScrollLine.coerceIn(0, maxOf(0, document.totalLines - 1))
+    )
     val horizontalScrollState = rememberScrollState()
+
+    // 自动恢复上次阅读进度提示
+    LaunchedEffect(initialScrollLine) {
+        if (initialScrollLine > 0) {
+            Toast.makeText(context, "已恢复至上次阅读位置（第 ${initialScrollLine + 1} 行）", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // 监听滚动位置，实时/防抖保存当前阅读进度
+    LaunchedEffect(verticalListState) {
+        snapshotFlow { verticalListState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { lineIndex ->
+                onProgressChanged(lineIndex, document.totalLines)
+            }
+    }
 
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var showEncodingDialog by remember { mutableStateOf(false) }
@@ -84,7 +105,7 @@ fun ReaderScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = { onBackClick(verticalListState.firstVisibleItemIndex) }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回"

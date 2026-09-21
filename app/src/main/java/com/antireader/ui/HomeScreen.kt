@@ -8,11 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.antireader.model.RecentFile
+import com.antireader.ui.components.FilePathDialog
 import com.antireader.utils.FileUtils
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -38,8 +35,10 @@ fun HomeScreen(
     onDeleteRecentClick: (RecentFile) -> Unit,
     onClearRecentsClick: () -> Unit
 ) {
-    // 待删除记录弹窗状态（用于长按或点击删除图标触发二次确认）
+    // 弹窗状态管理
     var filePendingDelete by remember { mutableStateOf<RecentFile?>(null) }
+    var fileForPathDialog by remember { mutableStateOf<RecentFile?>(null) }
+    var fileForOptionsMenu by remember { mutableStateOf<RecentFile?>(null) }
     var showClearAllConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -218,7 +217,8 @@ fun HomeScreen(
                         RecentFileItem(
                             file = file,
                             onClick = { onRecentFileClick(file) },
-                            onLongClick = { filePendingDelete = file },
+                            onLongClick = { fileForOptionsMenu = file },
+                            onShowPathClick = { fileForPathDialog = file },
                             onDeleteClick = { filePendingDelete = file }
                         )
                     }
@@ -229,7 +229,88 @@ fun HomeScreen(
         }
     }
 
-    // 单条记录删除确认弹窗
+    // 1. 查看保存路径详情弹窗
+    if (fileForPathDialog != null) {
+        FilePathDialog(
+            file = fileForPathDialog!!,
+            onDismissRequest = { fileForPathDialog = null }
+        )
+    }
+
+    // 2. 长按文档操作菜单弹窗
+    if (fileForOptionsMenu != null) {
+        val file = fileForOptionsMenu!!
+        AlertDialog(
+            onDismissRequest = { fileForOptionsMenu = null },
+            title = {
+                Text(
+                    text = file.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextButton(
+                        onClick = {
+                            fileForOptionsMenu = null
+                            onRecentFileClick(file)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (file.lastReadIndex > 0) "继续阅读 (已读 ${file.progressPercent}%)" else "打开阅读",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    TextButton(
+                        onClick = {
+                            val selected = file
+                            fileForOptionsMenu = null
+                            fileForPathDialog = selected
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("查看文件保存路径", modifier = Modifier.weight(1f))
+                    }
+
+                    TextButton(
+                        onClick = {
+                            val selected = file
+                            fileForOptionsMenu = null
+                            filePendingDelete = selected
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("从最近阅读中删除", modifier = Modifier.weight(1f))
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { fileForOptionsMenu = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 3. 单条记录删除确认弹窗
     if (filePendingDelete != null) {
         val file = filePendingDelete!!
         AlertDialog(
@@ -242,7 +323,7 @@ fun HomeScreen(
                 )
             },
             text = {
-                Text("确定要将「${file.displayName}」从最近阅读历史中删除吗？（仅删除历史记录，不影响原文件）")
+                Text("确定要将「${file.displayName}」从最近阅读历史中删除吗？（仅删除历史记录与应用内副本，不影响手机原文件）")
             },
             confirmButton = {
                 Button(
@@ -265,7 +346,7 @@ fun HomeScreen(
         )
     }
 
-    // 全部清空二次确认弹窗
+    // 4. 全部清空二次确认弹窗
     if (showClearAllConfirm) {
         AlertDialog(
             onDismissRequest = { showClearAllConfirm = false },
@@ -307,6 +388,7 @@ private fun RecentFileItem(
     file: RecentFile,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onShowPathClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     Card(
@@ -326,7 +408,7 @@ private fun RecentFileItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 14.dp),
+                .padding(vertical = 12.dp, horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -335,7 +417,7 @@ private fun RecentFileItem(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(32.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = file.displayName,
@@ -346,7 +428,7 @@ private fun RecentFileItem(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -360,19 +442,46 @@ private fun RecentFileItem(
                         color = MaterialTheme.colorScheme.outline
                     )
                     Text(
-                        text = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(
+                        text = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(
                             Date(file.lastOpenedTimestamp)
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // 阅读进度标签
+                    if (file.lastReadIndex > 0 && file.totalLines > 0) {
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        Text(
+                            text = "已读 ${file.progressPercent}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
-            // 右侧轻量快捷删除图标
+            // 查看文件保存路径快捷图标
+            IconButton(
+                onClick = onShowPathClick,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = "查看文件保存路径",
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+
+            // 删除单条记录快捷图标
             IconButton(
                 onClick = onDeleteClick,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(32.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
