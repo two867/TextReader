@@ -175,53 +175,13 @@ fun HomeScreen(
                 }
             } else {
                 items(recentFiles, key = { it.uriString }) { file ->
-                    // 支持左滑删除手势
-                    val dismissState = rememberSwipeToDismissBoxState(
-                        confirmValueChange = { value ->
-                            if (value == SwipeToDismissBoxValue.EndToStart) {
-                                onDeleteRecentClick(file)
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                    RecentFileItem(
+                        file = file,
+                        onClick = { onRecentFileClick(file) },
+                        onLongClick = { fileForOptionsMenu = file },
+                        onShowPathClick = { fileForPathDialog = file },
+                        onDeleteClick = { filePendingDelete = file }
                     )
-
-                    SwipeToDismissBox(
-                        state = dismissState,
-                        enableDismissFromStartToEnd = false,
-                        enableDismissFromEndToStart = true,
-                        backgroundContent = {
-                            val color = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) {
-                                MaterialTheme.colorScheme.errorContainer
-                            } else {
-                                Color.Transparent
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(color)
-                                    .padding(horizontal = 20.dp),
-                                contentAlignment = Alignment.CenterEnd
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "左滑删除",
-                                    tint = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
-                        }
-                    ) {
-                        RecentFileItem(
-                            file = file,
-                            onClick = { onRecentFileClick(file) },
-                            onLongClick = { fileForOptionsMenu = file },
-                            onShowPathClick = { fileForPathDialog = file },
-                            onDeleteClick = { filePendingDelete = file }
-                        )
-                    }
                 }
             }
 
