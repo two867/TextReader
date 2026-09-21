@@ -76,8 +76,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 },
                                 onRecentFileClick = { recent ->
-                                    val uri = Uri.parse(recent.uriString)
-                                    viewModel.openUri(context, uri, isFromRecent = true)
+                                    viewModel.openRecentFile(context, recent)
                                 },
                                 onDeleteRecentClick = { recent ->
                                     viewModel.removeRecentFile(context, recent.uriString)
@@ -192,7 +191,7 @@ class MainActivity : ComponentActivity() {
                     val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
                     if (!sharedText.isNullOrEmpty()) {
                         val title = intent.getStringExtra(Intent.EXTRA_SUBJECT) ?: "分享文本.txt"
-                        viewModel.openPlainText(title, sharedText)
+                        viewModel.openPlainText(this, title, sharedText)
                     }
                 }
             }

@@ -7,6 +7,9 @@ import com.antireader.model.RecentFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.util.Locale
 
@@ -15,6 +18,61 @@ object FileUtils {
     private const val PREFS_NAME = "antireader_prefs"
     private const val KEY_RECENTS = "recent_files"
     private const val MAX_RECENTS = 20
+
+    fun getRecentsDir(context: Context): File {
+        val dir = File(context.filesDir, "recents")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    /**
+     * 将外部 ContentProvider 的 URI（如微信、QQ、系统文件管理器分享的临时流）
+     * 自动备份到应用内部私有存储目录中，彻底解决由于外部 Intent 临时 URI 授权过期
+     * 导致下次在「最近阅读」点击提示「文档不存在或已被移动」的系统级权限问题。
+     */
+    fun cacheUriLocally(context: Context, uri: Uri, displayName: String): File? {
+        // 如果已经是内部私有文件，直接返回
+        if (uri.scheme == "file" && uri.path?.startsWith(context.filesDir.path) == true) {
+            val file = File(uri.path!!)
+            if (file.exists()) return file
+        }
+
+        val recentsDir = getRecentsDir(context)
+        val safeName = displayName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val hashPrefix = (uri.toString().hashCode().toLong() and 0xFFFFFFFFL).toString(16)
+        val targetFile = File(recentsDir, "${hashPrefix}_$safeName")
+
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                targetFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (targetFile.exists() && targetFile.length() > 0) {
+                targetFile
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun cacheTextLocally(context: Context, title: String, text: String): File? {
+        val recentsDir = getRecentsDir(context)
+        val safeName = title.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val hashPrefix = (title.hashCode().toLong() and 0xFFFFFFFFL).toString(16)
+        val targetFile = File(recentsDir, "${hashPrefix}_$safeName")
+
+        return try {
+            targetFile.writeText(text, Charsets.UTF_8)
+            targetFile
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     fun getFileNameAndSize(context: Context, uri: Uri): Pair<String, Long> {
         var name = "未知文档.txt"
@@ -38,6 +96,14 @@ object FileUtils {
             } catch (_: Exception) {}
         } else if (uri.scheme == "file") {
             name = uri.lastPathSegment ?: name
+            try {
+                uri.path?.let {
+                    val file = File(it)
+                    if (file.exists()) {
+                        size = file.length()
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
         // 兜底：如果没拿到名称，尝试从 URI 路径提取
@@ -46,6 +112,17 @@ object FileUtils {
         }
 
         return Pair(name, size)
+    }
+
+    /**
+     * 打开输入流，兼顾 file:// 与 content://
+     */
+    fun openInputStream(context: Context, uri: Uri): InputStream? {
+        return if (uri.scheme == "file") {
+            uri.path?.let { FileInputStream(File(it)) }
+        } else {
+            context.contentResolver.openInputStream(uri)
+        }
     }
 
     /**
@@ -59,7 +136,27 @@ object FileUtils {
         val lines = mutableListOf<String>()
         val charset = EncodingDetector.getCharset(charsetName)
 
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+        val stream = openInputStream(context, uri) ?: return emptyList()
+        stream.use { inputStream ->
+            BufferedReader(InputStreamReader(inputStream, charset)).use { reader ->
+                var line = reader.readLine()
+                while (line != null) {
+                    lines.add(line)
+                    line = reader.readLine()
+                }
+            }
+        }
+        return lines
+    }
+
+    fun readLinesFromFile(
+        file: File,
+        charsetName: String
+    ): List<String> {
+        val lines = mutableListOf<String>()
+        val charset = EncodingDetector.getCharset(charsetName)
+
+        FileInputStream(file).use { inputStream ->
             BufferedReader(InputStreamReader(inputStream, charset)).use { reader ->
                 var line = reader.readLine()
                 while (line != null) {
@@ -84,17 +181,28 @@ object FileUtils {
 
     fun saveRecentFile(context: Context, recent: RecentFile) {
         val list = getRecentFiles(context).toMutableList()
-        // 去重
-        list.removeAll { it.uriString == recent.uriString }
+        // 去重（根据原始 uriString 或 localCachePath）
+        list.removeAll {
+            it.uriString == recent.uriString ||
+                    (it.localCachePath != null && it.localCachePath == recent.localCachePath)
+        }
         list.add(0, recent)
-        if (list.size > MAX_RECENTS) {
-            list.removeAt(list.lastIndex)
+
+        // 超出最大历史数量时，物理删除被挤出的本地缓存文件
+        while (list.size > MAX_RECENTS) {
+            val evicted = list.removeAt(list.lastIndex)
+            evicted.localCachePath?.let { path ->
+                try {
+                    File(path).delete()
+                } catch (_: Exception) {}
+            }
         }
 
         val jsonArray = JSONArray()
         for (item in list) {
             val obj = JSONObject().apply {
                 put("uriString", item.uriString)
+                put("localCachePath", item.localCachePath ?: "")
                 put("displayName", item.displayName)
                 put("fileSize", item.fileSize)
                 put("lastOpenedTimestamp", item.lastOpenedTimestamp)
@@ -117,9 +225,11 @@ object FileUtils {
             val result = mutableListOf<RecentFile>()
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
+                val localPath = obj.optString("localCachePath", "").takeIf { it.isNotEmpty() }
                 result.add(
                     RecentFile(
                         uriString = obj.getString("uriString"),
+                        localCachePath = localPath,
                         displayName = obj.getString("displayName"),
                         fileSize = obj.optLong("fileSize", 0L),
                         lastOpenedTimestamp = obj.optLong("lastOpenedTimestamp", 0L)
@@ -134,12 +244,23 @@ object FileUtils {
 
     fun removeRecentFile(context: Context, uriString: String) {
         val list = getRecentFiles(context).toMutableList()
+        val removed = list.filter { it.uriString == uriString }
         list.removeAll { it.uriString == uriString }
+
+        // 清理被删除项对应的私有备份文件
+        for (item in removed) {
+            item.localCachePath?.let { path ->
+                try {
+                    File(path).delete()
+                } catch (_: Exception) {}
+            }
+        }
 
         val jsonArray = JSONArray()
         for (item in list) {
             val obj = JSONObject().apply {
                 put("uriString", item.uriString)
+                put("localCachePath", item.localCachePath ?: "")
                 put("displayName", item.displayName)
                 put("fileSize", item.fileSize)
                 put("lastOpenedTimestamp", item.lastOpenedTimestamp)
@@ -154,6 +275,11 @@ object FileUtils {
     }
 
     fun clearRecentFiles(context: Context) {
+        // 清除所有缓存文件
+        try {
+            getRecentsDir(context).listFiles()?.forEach { it.delete() }
+        } catch (_: Exception) {}
+
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_RECENTS)
